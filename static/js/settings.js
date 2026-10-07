@@ -413,18 +413,26 @@ async function initUtilityModel() {
     }
     var meta = (_levelsByEndpoint[targetEp] || {})[targetModel] || {};
     var levels = Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels : [];
+    var isInherited = !epSel.value;
     while (effortSel.options.length) effortSel.remove(0);
     var base = document.createElement('option');
     base.value = '';
-    base.textContent = 'Provider default';
+    base.textContent = isInherited ? 'Same as chat' : 'Provider default';
     effortSel.appendChild(base);
+    if (isInherited) {
+      var offOpt = document.createElement('option');
+      offOpt.value = 'off';
+      offOpt.textContent = 'Provider default';
+      effortSel.appendChild(offOpt);
+    }
     levels.forEach(function(level) {
       var opt = document.createElement('option');
       opt.value = level;
       opt.textContent = level;
       effortSel.appendChild(opt);
     });
-    effortSel.value = levels.indexOf(selected) >= 0 ? selected : '';
+    var validValues = [''].concat(isInherited ? ['off'] : []).concat(levels);
+    effortSel.value = validValues.indexOf(selected) >= 0 ? selected : '';
     var show = levels.length > 0;
     if (effortRow) effortRow.style.display = show ? '' : 'none';
     if (effortHelp) effortHelp.style.display = show ? '' : 'none';

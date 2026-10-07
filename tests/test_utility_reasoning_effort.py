@@ -233,6 +233,16 @@ def test_no_session_means_no_inheritance(util):
     assert util.effort_for_call(CHAT[0], CHAT[1], "alice") is None
 
 
+def test_explicit_off_setting_blocks_session_effort_inheritance(util):
+    util.settings["alice"] = "off"
+    assert util.effort_for_call(CHAT[0], CHAT[1], "alice", _Sess("effort:low")) is None
+    assert util.candidate_effort_factory("alice") is None
+
+    util.settings["alice"] = "default"
+    assert util.effort_for_call(CHAT[0], CHAT[1], "alice", _Sess("effort:low")) is None
+    assert util.candidate_effort_factory("alice") is None
+
+
 def test_inherited_effort_is_validated_against_the_model(util):
     assert util.effort_for_call(
         NO_EVIDENCE[0], NO_EVIDENCE[1], "alice",

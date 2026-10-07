@@ -72,6 +72,9 @@ def effort_for_call(url: str, model: str, owner: Optional[str] = None, session=N
     a lookup failure means "send nothing".
     """
     try:
+        raw = configured_effort(owner)
+        if raw in {"off", "none", "default"}:
+            return None
         effort = effort_for_route(url, model, owner)
         if effort or session is None:
             return effort
@@ -88,11 +91,12 @@ def effort_for_call(url: str, model: str, owner: Optional[str] = None, session=N
 def candidate_effort_factory(owner=None):
     """Per-candidate factory for `llm_call_async_with_fallback`.
 
-    Returns None when the setting is empty.  Otherwise a factory sending the
+    Returns None when the setting is empty or off.  Otherwise a factory sending the
     effort only to utility-chain candidates (owner-scoped) whose model
     advertises it.
     """
-    if not configured_effort(owner):
+    raw = configured_effort(owner)
+    if not raw or raw in {"off", "none", "default"}:
         return None
 
     def factory(_index, url, model, _headers):
