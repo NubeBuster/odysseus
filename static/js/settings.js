@@ -412,12 +412,31 @@ async function initUtilityModel() {
       if (defModel) targetModel = defModel.value;
     }
     var meta = (_levelsByEndpoint[targetEp] || {})[targetModel] || {};
-    var levels = Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels : [];
+    var levels = Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels.slice() : [];
     var isInherited = !epSel.value;
+    if (isInherited && levels.length === 0) {
+      var allLevels = {};
+      Object.keys(_levelsByEndpoint).forEach(function(epId) {
+        var models = _levelsByEndpoint[epId] || {};
+        Object.keys(models).forEach(function(mId) {
+          var mLevels = (models[mId] || {}).supported_reasoning_levels;
+          if (Array.isArray(mLevels)) {
+            mLevels.forEach(function(lvl) {
+              var val = typeof lvl === 'string' ? lvl : (lvl && lvl.effort);
+              if (val) allLevels[val.toLowerCase()] = true;
+            });
+          }
+        });
+      });
+      levels = Object.keys(allLevels);
+      if (levels.length === 0) {
+        levels = ['low', 'medium', 'high'];
+      }
+    }
     while (effortSel.options.length) effortSel.remove(0);
     var base = document.createElement('option');
     base.value = '';
-    base.textContent = isInherited ? 'Same as chat' : 'Provider default';
+    base.textContent = isInherited ? 'Same as chat (when supported)' : 'Provider default';
     effortSel.appendChild(base);
     if (isInherited) {
       var offOpt = document.createElement('option');
@@ -433,7 +452,7 @@ async function initUtilityModel() {
     });
     var validValues = [''].concat(isInherited ? ['off'] : []).concat(levels);
     effortSel.value = validValues.indexOf(selected) >= 0 ? selected : '';
-    var show = levels.length > 0;
+    var show = isInherited || levels.length > 0;
     if (effortRow) effortRow.style.display = show ? '' : 'none';
     if (effortHelp) effortHelp.style.display = show ? '' : 'none';
   }
