@@ -26315,6 +26315,7 @@ async def stream_agent_loop(
         _round_real_output_tokens = 0
         _round_has_real_usage = False
         applied_temperature = None  # Never reuse an earlier round's sampling setting.
+        applied_reasoning_effort = ""  # Never reuse an earlier round's effort setting.
         _round_usage_finalized = False
         # Some API models (notably DeepSeek) stream DSML/XML tool calls as
         # ordinary text instead of emitting structured tool-call events. Keep
