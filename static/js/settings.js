@@ -403,7 +403,15 @@ async function initUtilityModel() {
 
   function refreshEffort(selected) {
     if (!effortSel) return;
-    var meta = (_levelsByEndpoint[epSel.value] || {})[modelSel.value] || {};
+    var targetEp = epSel.value;
+    var targetModel = modelSel.value;
+    if (!targetEp) {
+      var defEp = el('set-defaultEpSelect');
+      var defModel = el('set-defaultModelSelect');
+      if (defEp) targetEp = defEp.value;
+      if (defModel) targetModel = defModel.value;
+    }
+    var meta = (_levelsByEndpoint[targetEp] || {})[targetModel] || {};
     var levels = Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels : [];
     while (effortSel.options.length) effortSel.remove(0);
     var base = document.createElement('option');
@@ -467,6 +475,10 @@ async function initUtilityModel() {
   epSel.addEventListener('change', function() { refreshModels(''); refreshEffort(''); saveUtility(); });
   modelSel.addEventListener('change', function() { refreshEffort(effortSel ? effortSel.value : ''); saveUtility(); });
   if (effortSel) effortSel.addEventListener('change', saveUtility);
+  var defEp = el('set-defaultEpSelect');
+  var defModel = el('set-defaultModelSelect');
+  if (defEp) defEp.addEventListener('change', function() { if (!epSel.value) refreshEffort(effortSel ? effortSel.value : ''); });
+  if (defModel) defModel.addEventListener('change', function() { if (!epSel.value) refreshEffort(effortSel ? effortSel.value : ''); });
 
   _registerAiEndpointRefresh(async function(endpoints) {
     _endpoints = endpoints;
