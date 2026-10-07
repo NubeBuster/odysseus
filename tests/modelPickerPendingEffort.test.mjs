@@ -45,3 +45,14 @@ test('an existing chat on Default sends no effort', () => {
   const p = makePicker({ sessionId: 's1', sessions: [{ id: 's1', thinking_mode: 'off' }], pending: null });
   assert.equal(p.get(), null);
 });
+
+test('the first message works before the session list knows the new session', () => {
+  const p = makePicker({ sessionId: 's9', sessions: [], pending: 'medium' });
+  assert.equal(p.get(), 'medium');
+  assert.equal(p.pending(), null);
+});
+
+test('an existing chat with messages does not inherit another chat\'s unsent pick', () => {
+  const p = makePicker({ sessionId: 's1', sessions: [{ id: 's1', thinking_mode: 'off', message_count: 4 }], pending: 'high' });
+  assert.equal(p.get(), null);
+});

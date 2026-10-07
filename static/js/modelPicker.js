@@ -1011,10 +1011,12 @@ export function getSelectedReasoningEffort() {
   // sent, so the pick made beforehand is still pending here. Hand it to the
   // session now (the server stores it from that message) instead of
   // dropping it because the fresh session has no effort recorded yet.
-  if (s && _pendingReasoningEffort) {
+  // (The list may not know the new session yet; an existing chat with
+  // messages never inherits a pick made for a different, unsent chat.)
+  if (_pendingReasoningEffort && !(s?.message_count > 0)) {
     const effort = _pendingReasoningEffort;
     _pendingReasoningEffort = null;
-    s.thinking_mode = `effort:${effort}`;
+    if (s) s.thinking_mode = `effort:${effort}`;
     return effort;
   }
   return null;
@@ -1062,6 +1064,19 @@ function _findModelMetadata(modelId, selectedEndpoint) {
   return null;
 }
 
+let _effortCatalogLoad = null;
+function _renderEffortOnceCatalogLoads() {
+  const mm = window.modelsModule;
+  if (_effortCatalogLoad || !mm?.getCachedItems || typeof mm.refreshModels !== 'function') return;
+  if ((mm.getCachedItems() || []).length) return;
+  _effortCatalogLoad = mm.refreshModels(false)
+    .catch(() => {})
+    .finally(() => {
+      _effortCatalogLoad = null;
+      if ((mm.getCachedItems() || []).length) updateModelPicker();
+    });
+}
+
 async function _updateReasoningEffortUI(modelId, s, latestPending, selectedEndpoint) {
   _initReasoningEffort();
   const wrap = document.getElementById('reasoning-effort-wrap');
@@ -1079,6 +1094,10 @@ async function _updateReasoningEffortUI(modelId, s, latestPending, selectedEndpo
   const levels = metadata?.supported_reasoning_levels;
   if (!Array.isArray(levels) || levels.length === 0) {
     wrap.style.display = 'none';
+    // The model catalog is fetched lazily, so on a cold page load the levels
+    // are simply not here yet. Load it and render again; until then the
+    // control stays hidden and nothing stored for the chat is touched.
+    _renderEffortOnceCatalogLoads();
     return;
   }
 
