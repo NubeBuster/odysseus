@@ -58,3 +58,14 @@ test('an existing chat with messages does not inherit another chat\'s unsent pic
   const p = makePicker({ sessionId: 's1', sessions: [{ id: 's1', thinking_mode: 'off', message_count: 4 }], pending: 'high' });
   assert.equal(p.get(), null);
 });
+
+test('updating an existing session thinking_mode updates the returned effort', () => {
+  const session = { id: 's1', thinking_mode: 'effort:low', message_count: 2 };
+  const p = makePicker({ sessionId: 's1', sessions: [session], pending: null });
+  assert.equal(p.get(), 'low');
+  session.thinking_mode = 'effort:high';
+  assert.equal(p.get(), 'high');
+  session.thinking_mode = 'off';
+  assert.equal(p.get(), null);
+});
+

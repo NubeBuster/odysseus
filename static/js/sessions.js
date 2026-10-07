@@ -2002,6 +2002,7 @@ export async function loadSessions() {
       const s = sessions.find(x => x.id === targetId);
       const metaEl = document.getElementById('current-meta');
       if (metaEl && s) metaEl.textContent = s.name;
+      updateModelPicker();
     }
 
     // No session selected — still enable input so slash commands (e.g. /setup) work
