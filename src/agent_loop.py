@@ -16182,6 +16182,7 @@ def _compute_final_metrics(
     backend_prefill_tps: float = 0,
     real_cost_usd: float = 0.0,
     endpoint_url: Optional[str] = None,
+    reasoning_effort: str = "",
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
     if has_real_usage:
@@ -16235,6 +16236,8 @@ def _compute_final_metrics(
     }
     if backend_prefill_tps and backend_prefill_tps > 0:
         metrics["prefill_tps"] = round(backend_prefill_tps, 2)
+    if reasoning_effort:
+        metrics["reasoning_effort"] = reasoning_effort
     if prep_timings:
         prep_total = round(sum(prep_timings.values()), 3)
         metrics["agent_prep_time"] = prep_total
@@ -22065,6 +22068,7 @@ async def stream_agent_loop(
         real_output_tokens = 0
         real_cost_usd = 0.0
         direct_has_real_usage = False
+        direct_reasoning_effort = ""
         # The merged tools model has a clean native stream; do not hold its
         # visible answer until the full completion has finished.
         direct_defer_visible = (
@@ -22203,6 +22207,7 @@ async def stream_agent_loop(
                         real_input_tokens += normalized_usage["input_tokens"]
                         real_output_tokens += normalized_usage["output_tokens"]
                         direct_has_real_usage = True
+                        direct_reasoning_effort = usage.get("reasoning_effort") or direct_reasoning_effort
                         try:
                             real_cost_usd += float(usage.get("cost_usd") or 0.0)
                         except (TypeError, ValueError):
@@ -22359,6 +22364,8 @@ async def stream_agent_loop(
         }
         if isinstance(direct_actual_endpoint_cost_tracked, bool):
             metrics["endpoint_cost_tracked"] = direct_actual_endpoint_cost_tracked
+        if direct_reasoning_effort:
+            metrics["reasoning_effort"] = direct_reasoning_effort
         # USD cost: provider-reported, else table estimate (never guessed).
         if real_cost_usd and real_cost_usd > 0:
             metrics["cost_usd"] = round(real_cost_usd, 6)
@@ -24696,6 +24703,7 @@ async def stream_agent_loop(
     has_real_usage = False
     backend_gen_tps = 0      # backend-reported true gen speed (llama.cpp timings)
     backend_prefill_tps = 0  # backend-reported prefill speed
+    applied_reasoning_effort = ""  # effort the last round's request actually carried
     real_cost_usd = 0.0      # provider-reported USD cost (OpenRouter usage.cost)
     requested_model = model
     actual_model = model
@@ -27315,6 +27323,7 @@ async def stream_agent_loop(
                             backend_gen_tps = u["gen_tps"]
                         if u.get("prefill_tps"):
                             backend_prefill_tps = u["prefill_tps"]
+                        applied_reasoning_effort = u.get("reasoning_effort") or ""
                         # Provider-reported USD cost (OpenRouter usage.cost,
                         # extracted by llm_core). Accumulated across rounds.
                         try:
@@ -37944,6 +37953,7 @@ async def stream_agent_loop(
         backend_prefill_tps=backend_prefill_tps,
         real_cost_usd=real_cost_usd,
         endpoint_url=endpoint_url,
+        reasoning_effort=applied_reasoning_effort,
     )
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id
