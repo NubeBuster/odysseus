@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from src.model_context import estimate_text_tokens, get_context_length, estimate_tokens
 from src.llm_core import llm_call_async
 from src.endpoint_resolver import resolve_endpoint
+from src.utility_effort import effort_for_call
 from src.settings import get_setting
 from core.models import ChatMessage
 
@@ -580,6 +581,7 @@ async def maybe_compact(
             max_tokens=SUMMARY_MAX_TOKENS,
             headers=compact_headers,
             timeout=30,
+            reasoning_effort=effort_for_call(compact_url, compact_model, owner, session),
         )
     except Exception as e:
         logger.error(f"Compaction summary failed: {e}")

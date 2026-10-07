@@ -1238,6 +1238,7 @@ def setup_session_routes(
         from src.context_compactor import SELF_SUMMARY_SYSTEM_PROMPT
         from src.endpoint_resolver import resolve_endpoint
         from src.llm_core import llm_call_async
+        from src.utility_effort import effort_for_call
 
         owner = getattr(session, "owner", None) or effective_user(request)
         url, model, headers = resolve_endpoint("utility", owner=owner)
@@ -1268,6 +1269,7 @@ def setup_session_routes(
                 max_tokens=1024,
                 headers=headers,
                 timeout=60,
+                reasoning_effort=effort_for_call(url, model, owner, session),
             )
         except Exception as e:
             logger.error("Manual compaction failed: %s", e)
@@ -1311,6 +1313,7 @@ def setup_session_routes(
         users can clean junk without spending tokens.
         """
         from src.llm_core import llm_call
+        from src.utility_effort import effort_for_call
         user = effective_user(request)
         single_user_mode = not user and _auth_disabled()
         user_sessions = session_manager.get_sessions_for_user(user)
@@ -1483,7 +1486,8 @@ def setup_session_routes(
             # reasoning model spends tokens thinking first — 4096 truncated the
             # JSON mid-output, so it never parsed ("invalid JSON for auto-sort").
             raw = llm_call(url, model, [{"role": "user", "content": prompt}],
-                           temperature=0.3, max_tokens=16384, headers=headers, timeout=120)
+                           temperature=0.3, max_tokens=16384, headers=headers, timeout=120,
+                           reasoning_effort=effort_for_call(url, model, user))
             logger.info(f"Auto-sort raw response ({len(raw)} chars): {raw[:300]}")
             # Extract JSON from response — handle markdown fences, leading text,
             # reasoning-model <think> blocks, and trailing commas.

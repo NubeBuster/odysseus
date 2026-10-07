@@ -371,9 +371,13 @@ async function initDefaultChat() {
 async function initUtilityModel() {
   var epSel = el('set-utilityEpSelect');
   var modelSel = el('set-utilityModelSelect');
+  var effortSel = el('set-utilityEffortSelect');
+  var effortRow = el('set-utilityEffortRow');
+  var effortHelp = el('set-utilityEffortHelp');
   var msg = el('set-utilityChatMsg');
   var _endpoints = [];
   var fallbackWidget = null;
+  var _levelsByEndpoint = {};
   if (epSel && epSel.options[0]) epSel.options[0].textContent = 'Same as chat';
   if (modelSel && modelSel.options[0]) modelSel.options[0].textContent = 'Same as chat';
 
@@ -382,17 +386,56 @@ async function initUtilityModel() {
     _fillEndpointSelect(epSel, _endpoints, epSel.value, true);
   } catch (e) { console.warn('Failed to load endpoints for utility model', e); }
 
+  // Effort levels come from /api/models `models_metadata` (same evidence the
+  // chat composer uses); /api/model-endpoints does not carry them.
+  async function loadEffortLevels() {
+    try {
+      var r = await fetch('/api/models', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      var data = await r.json();
+      var items = Array.isArray(data) ? data : (data.models || data.items || []);
+      _levelsByEndpoint = {};
+      items.forEach(function(item) {
+        if (item && item.endpoint_id) _levelsByEndpoint[item.endpoint_id] = item.models_metadata || {};
+      });
+    } catch (e) { console.warn('Failed to load reasoning levels for utility model', e); }
+  }
+
+  function refreshEffort(selected) {
+    if (!effortSel) return;
+    var meta = (_levelsByEndpoint[epSel.value] || {})[modelSel.value] || {};
+    var levels = Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels : [];
+    while (effortSel.options.length) effortSel.remove(0);
+    var base = document.createElement('option');
+    base.value = '';
+    base.textContent = 'Provider default';
+    effortSel.appendChild(base);
+    levels.forEach(function(level) {
+      var opt = document.createElement('option');
+      opt.value = level;
+      opt.textContent = level;
+      effortSel.appendChild(opt);
+    });
+    effortSel.value = levels.indexOf(selected) >= 0 ? selected : '';
+    var show = levels.length > 0;
+    if (effortRow) effortRow.style.display = show ? '' : 'none';
+    if (effortHelp) effortHelp.style.display = show ? '' : 'none';
+  }
+
   function refreshModels(selectedModel) {
     var epId = epSel.value;
     var ep = _endpoints.find(function(e) { return e.id === epId; });
     _fillModelSelect(modelSel, ep ? ep.models : [], selectedModel, true);
   }
 
+  await loadEffortLevels();
+
   try {
     var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     var settings = await res.json();
     if (settings.utility_endpoint_id) epSel.value = settings.utility_endpoint_id;
     refreshModels(settings.utility_model || '');
+    refreshEffort(settings.utility_reasoning_effort || '');
     fallbackWidget = _bindFallbackWidget({
       containerId: 'set-utilityFallbacks',
       addBtnId: 'set-utilityAddFallback',
@@ -411,20 +454,26 @@ async function initUtilityModel() {
     try {
       await _postSettings({
         utility_endpoint_id: epSel.value || '',
-        utility_model: modelSel.value || ''
+        utility_model: modelSel.value || '',
+        utility_reasoning_effort: effortSel ? (effortSel.value || '') : ''
       });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(function() { msg.textContent = ''; }, 1500);
     } catch (e) { msg.textContent = e.status === 403 ? 'Admin access is required to change these settings.' : 'Failed to save'; msg.style.color = 'var(--red)'; }
   }
 
-  epSel.addEventListener('change', function() { refreshModels(''); saveUtility(); });
-  modelSel.addEventListener('change', saveUtility);
+  // A new endpoint/model may not advertise the saved effort; refreshEffort
+  // resets it to the provider default, and saveUtility persists that.
+  epSel.addEventListener('change', function() { refreshModels(''); refreshEffort(''); saveUtility(); });
+  modelSel.addEventListener('change', function() { refreshEffort(effortSel ? effortSel.value : ''); saveUtility(); });
+  if (effortSel) effortSel.addEventListener('change', saveUtility);
 
-  _registerAiEndpointRefresh(function(endpoints) {
+  _registerAiEndpointRefresh(async function(endpoints) {
     _endpoints = endpoints;
     _fillEndpointSelect(epSel, _endpoints, epSel.value, true);
     refreshModels(modelSel.value);
+    await loadEffortLevels();
+    refreshEffort(effortSel ? effortSel.value : '');
     if (fallbackWidget && fallbackWidget.refresh) fallbackWidget.refresh();
   });
 }
