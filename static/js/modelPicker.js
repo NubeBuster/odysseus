@@ -1007,6 +1007,16 @@ export function getSelectedReasoningEffort() {
   if (mode.startsWith('effort:')) {
     return mode.slice('effort:'.length).trim().toLowerCase();
   }
+  // A new chat's session is materialized right before its first message is
+  // sent, so the pick made beforehand is still pending here. Hand it to the
+  // session now (the server stores it from that message) instead of
+  // dropping it because the fresh session has no effort recorded yet.
+  if (s && _pendingReasoningEffort) {
+    const effort = _pendingReasoningEffort;
+    _pendingReasoningEffort = null;
+    s.thinking_mode = `effort:${effort}`;
+    return effort;
+  }
   return null;
 }
 try { window.__odysseusGetReasoningEffort = getSelectedReasoningEffort; } catch (_) {}
