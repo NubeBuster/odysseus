@@ -572,6 +572,20 @@ def _annotate_usage_effort(usage: dict, payload: dict, requested_effort: Optiona
     return usage
 
 
+def _annotate_usage_temperature(usage: dict, payload: dict) -> dict:
+    """Record temperature from the final wire payload, including native Ollama."""
+    options = payload.get("options")
+    options = options if isinstance(options, dict) else {}
+    temperature = payload.get("temperature", options.get("temperature"))
+    if (
+        isinstance(temperature, (int, float))
+        and not isinstance(temperature, bool)
+        and math.isfinite(temperature)
+    ):
+        usage["temperature"] = temperature
+    return usage
+
+
 def note_model_activity(url: str, model: str):
     """Record that a real upstream request used this endpoint/model."""
     if not url or not model:
@@ -3139,6 +3153,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     _responses_actual_model,
                                 )
                                 _annotate_usage_effort(normalized_usage, payload, reasoning_effort)
+                                _annotate_usage_temperature(normalized_usage, payload)
                                 yield f'data: {json.dumps({"type": "usage", "data": normalized_usage})}\n\n'
                         yield "data: [DONE]\n\n"
                         return
@@ -3245,6 +3260,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     model,
                                     _ollama_actual_model,
                                 )
+                                _annotate_usage_temperature(normalized_usage, payload)
                                 yield f'data: {json.dumps({"type": "usage", "data": normalized_usage})}\n\n'
                         yield "data: [DONE]\n\n"
                         return
@@ -3392,6 +3408,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     model,
                                     _anth_actual_model,
                                 )
+                                _annotate_usage_temperature(normalized_usage, payload)
                                 yield f'data: {json.dumps({"type": "usage", "data": normalized_usage})}\n\n'
                             yield "data: [DONE]\n\n"
                             return
@@ -3663,6 +3680,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         if not _same_model_identity(_actual_model, model):
                                             _usage_data["requested_model"] = model
                                     _annotate_usage_effort(_usage_data, payload, reasoning_effort)
+                                    _annotate_usage_temperature(_usage_data, payload)
                                     yield f'data: {json.dumps({"type": "usage", "data": _usage_data})}\n\n'
                                 elif "choices" in j:
                                     _c0 = (j["choices"] or [None])[0]
