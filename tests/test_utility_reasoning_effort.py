@@ -389,3 +389,29 @@ def test_candidate_effort_factory_scopes_to_utility_route(util):
     assert factory(0, UTIL[0], UTIL[1], {}) == {"kwargs": {"reasoning_effort": "medium"}}
     assert factory(1, NO_EVIDENCE[0], NO_EVIDENCE[1], {}) == {}
     assert candidate_effort_factory("bob") is None
+
+
+def test_fallback_route_efforts_and_factory(monkeypatch):
+    from src.utility_effort import candidate_effort_factory, effort_for_route
+
+    def fake_resolve_id(ep_id, model, owner=None):
+        if ep_id == "ep-fallback":
+            return ("https://fallback.example/v1", model, {})
+        return None
+
+    monkeypatch.setattr("src.endpoint_resolver.resolve_endpoint_by_id", fake_resolve_id)
+    monkeypatch.setattr(
+        "src.settings.load_settings",
+        lambda: {"utility_model_fallbacks": [{"endpoint_id": "ep-fallback", "model": "gpt-5.5-mini", "reasoning_effort": "low"}]},
+    )
+    monkeypatch.setattr(
+        "src.settings.get_user_setting",
+        lambda key, owner="", default=None: default,
+    )
+
+    factory = candidate_effort_factory("alice")
+    assert factory is not None
+    assert effort_for_route("https://api.openai.example/v1", "gpt-5.5", "alice") is None
+    assert effort_for_route("https://fallback.example/v1", "gpt-5.5-mini", "alice") == "low"
+    assert factory(0, "https://fallback.example/v1", "gpt-5.5-mini", {}) == {"kwargs": {"reasoning_effort": "low"}}
+

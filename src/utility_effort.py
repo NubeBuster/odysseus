@@ -36,8 +36,49 @@ def configured_effort(owner: Optional[str] = None) -> str:
     return str(get_user_setting("utility_reasoning_effort", owner or "", "") or "").strip().lower()
 
 
+def fallback_route_efforts(owner: Optional[str] = None) -> dict[tuple[str, str], str]:
+    """Configured effort per fallback candidate in ``utility_model_fallbacks``."""
+    from src.endpoint_resolver import resolve_endpoint_by_id
+    from src.settings import get_user_setting, load_settings
+
+    try:
+        settings = load_settings()
+        chain = get_user_setting(
+            "utility_model_fallbacks",
+            owner or "",
+            settings.get("utility_model_fallbacks") or [],
+        ) or []
+    except Exception:
+        return {}
+
+    res = {}
+    for entry in chain:
+        if not isinstance(entry, dict) or "reasoning_effort" not in entry:
+            continue
+        effort = str(entry.get("reasoning_effort") or "").strip().lower()
+        ep = resolve_endpoint_by_id(
+            entry.get("endpoint_id", ""),
+            entry.get("model", ""),
+            owner=owner,
+        )
+        if ep:
+            url, model, _ = ep
+            if url and model:
+                res[(url, model)] = effort
+    return res
+
+
 def effort_for_route(url: str, model: str, owner: Optional[str] = None) -> Optional[str]:
     """Validated effort for ``(url, model)``, or None when it must not be sent."""
+    fb_efforts = fallback_route_efforts(owner)
+    if (url, model) in fb_efforts:
+        fb_effort = fb_efforts[(url, model)]
+        if not fb_effort or fb_effort in {"off", "none", "default"}:
+            return None
+        from src.chatgpt_subscription import validate_reasoning_effort
+
+        return validate_reasoning_effort(model, fb_effort)
+
     effort = configured_effort(owner)
     if not effort or (url, model) not in utility_routes(owner):
         return None
@@ -91,12 +132,15 @@ def effort_for_call(url: str, model: str, owner: Optional[str] = None, session=N
 def candidate_effort_factory(owner=None):
     """Per-candidate factory for `llm_call_async_with_fallback`.
 
-    Returns None when the setting is empty or off.  Otherwise a factory sending the
-    effort only to utility-chain candidates (owner-scoped) whose model
-    advertises it.
+    Returns None when neither the setting nor any fallback effort is configured.
+    Otherwise a factory sending the effort only to utility-chain candidates
+    (owner-scoped) whose model advertises it.
     """
     raw = configured_effort(owner)
-    if not raw or raw in {"off", "none", "default"}:
+    has_primary = bool(raw and raw not in {"off", "none", "default"})
+    fb_efforts = fallback_route_efforts(owner)
+    has_fb = any(eff and eff not in {"off", "none", "default"} for eff in fb_efforts.values())
+    if not has_primary and not has_fb:
         return None
 
     def factory(_index, url, model, _headers):

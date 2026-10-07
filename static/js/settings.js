@@ -212,9 +212,11 @@ function _bindFallbackWidget(opts) {
   var endpointsRef = opts.endpoints;       // mutable list reference
   var modelsFilter = opts.modelsFilter || function() { return true; };
   var settingKey = opts.settingKey;
-  var current = opts.initial || [];        // [{endpoint_id, model}]
+  var current = opts.initial || [];        // [{endpoint_id, model, reasoning_effort}]
+  var supportsEffort = Boolean(opts.supportsEffort);
+  var getEffortLevels = opts.getEffortLevels;
 
-  if (!fbContainer || !addBtn) return { setEndpoints: function() {}, setInitial: function() {} };
+  if (!fbContainer || !addBtn) return { setEndpoints: function() {}, setInitial: function() {}, refresh: function() {} };
 
   function enabledEps() { return (endpointsRef() || []).filter(function(e) { return e.is_enabled; }); }
 
@@ -233,8 +235,36 @@ function _bindFallbackWidget(opts) {
     if (selected) selectEl.value = selected;
   }
 
+  function fillEffort(selectEl, epId, modelId, selected) {
+    if (!selectEl) return;
+    while (selectEl.options.length) selectEl.remove(0);
+    var levels = getEffortLevels ? getEffortLevels(epId, modelId) : [];
+    var base = document.createElement('option');
+    base.value = '';
+    base.textContent = 'Provider default';
+    selectEl.appendChild(base);
+    levels.forEach(function(lvl) {
+      var val = typeof lvl === 'string' ? lvl : (lvl && lvl.effort);
+      if (val) {
+        var o = document.createElement('option');
+        o.value = val.toLowerCase();
+        o.textContent = val;
+        selectEl.appendChild(o);
+      }
+    });
+    var validValues = [''].concat(levels.map(function(l) { return (typeof l === 'string' ? l : l.effort).toLowerCase(); }));
+    selectEl.value = validValues.indexOf((selected || '').toLowerCase()) >= 0 ? (selected || '').toLowerCase() : '';
+    selectEl.style.display = levels.length > 0 ? '' : 'none';
+  }
+
   async function save() {
-    var clean = current.filter(function(f) { return f.endpoint_id && f.model; });
+    var clean = current.filter(function(f) { return f.endpoint_id && f.model; }).map(function(f) {
+      var item = { endpoint_id: f.endpoint_id, model: f.model };
+      if (supportsEffort && typeof f.reasoning_effort !== 'undefined') {
+        item.reasoning_effort = f.reasoning_effort || '';
+      }
+      return item;
+    });
     var body = {};
     body[settingKey] = clean;
     try {
@@ -270,13 +300,36 @@ function _bindFallbackWidget(opts) {
       fb.endpoint_id = epS.value;
       fb.model = mS.value;
 
+      var effS = null;
+      if (supportsEffort) {
+        effS = document.createElement('select');
+        effS.className = 'settings-select settings-fallback-effort';
+        fillEffort(effS, epS.value, mS.value, fb.reasoning_effort);
+        fb.reasoning_effort = effS.value;
+        effS.addEventListener('change', function() {
+          fb.reasoning_effort = effS.value;
+          save();
+        });
+      }
+
       epS.addEventListener('change', function() {
         fb.endpoint_id = epS.value;
         fillModels(mS, epS.value, '');
         fb.model = mS.value;
+        if (effS) {
+          fillEffort(effS, epS.value, mS.value, '');
+          fb.reasoning_effort = effS.value;
+        }
         save();
       });
-      mS.addEventListener('change', function() { fb.model = mS.value; save(); });
+      mS.addEventListener('change', function() {
+        fb.model = mS.value;
+        if (effS) {
+          fillEffort(effS, epS.value, mS.value, fb.reasoning_effort);
+          fb.reasoning_effort = effS.value;
+        }
+        save();
+      });
 
       var rm = document.createElement('button');
       rm.type = 'button';
@@ -292,6 +345,7 @@ function _bindFallbackWidget(opts) {
       row.appendChild(num);
       row.appendChild(epS);
       row.appendChild(mS);
+      if (effS) row.appendChild(effS);
       row.appendChild(rm);
       fbContainer.appendChild(row);
     });
@@ -299,7 +353,7 @@ function _bindFallbackWidget(opts) {
 
   addBtn.addEventListener('click', function() {
     var first = enabledEps()[0];
-    current.push({ endpoint_id: first ? first.id : '', model: '' });
+    current.push({ endpoint_id: first ? first.id : '', model: '', reasoning_effort: '' });
     render();
     save();
   });
@@ -374,6 +428,7 @@ async function initUtilityModel() {
   var effortSel = el('set-utilityEffortSelect');
   var effortRow = el('set-utilityEffortRow');
   var effortHelp = el('set-utilityEffortHelp');
+  var effortQualifier = el('set-utilityEffortQualifier');
   var msg = el('set-utilityChatMsg');
   var _endpoints = [];
   var fallbackWidget = null;
@@ -436,7 +491,8 @@ async function initUtilityModel() {
     while (effortSel.options.length) effortSel.remove(0);
     var base = document.createElement('option');
     base.value = '';
-    base.textContent = isInherited ? 'Same as chat (when supported)' : 'Provider default';
+    base.textContent = isInherited ? 'Same as chat' : 'Provider default';
+    if (effortQualifier) effortQualifier.style.display = isInherited ? '' : 'none';
     effortSel.appendChild(base);
     if (isInherited) {
       var offOpt = document.createElement('option');
@@ -476,8 +532,19 @@ async function initUtilityModel() {
       addBtnId: 'set-utilityAddFallback',
       endpoints: function() { return _endpoints; },
       settingKey: 'utility_model_fallbacks',
+      supportsEffort: true,
+      getEffortLevels: function(epId, modelId) {
+        var meta = (_levelsByEndpoint[epId] || {})[modelId] || {};
+        return Array.isArray(meta.supported_reasoning_levels) ? meta.supported_reasoning_levels : [];
+      },
       initial: Array.isArray(settings.utility_model_fallbacks)
-        ? settings.utility_model_fallbacks.map(function(f) { return { endpoint_id: (f && f.endpoint_id) || '', model: (f && f.model) || '' }; })
+        ? settings.utility_model_fallbacks.map(function(f) {
+            return {
+              endpoint_id: (f && f.endpoint_id) || '',
+              model: (f && f.model) || '',
+              reasoning_effort: (f && f.reasoning_effort) || '',
+            };
+          })
         : [],
     });
   } catch (e) { console.warn('Failed to load utility model settings', e); }
