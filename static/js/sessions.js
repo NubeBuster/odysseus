@@ -2057,6 +2057,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       _pendingChat = null;
       _pendingMaterializePromise = null;
     }
+    try { window.__odysseusClearPendingReasoningEffort?.(); } catch (_) {}
     _clearHistoryPager();
     // Re-archive peeked session when navigating away
     _checkPeekCleanup(id);

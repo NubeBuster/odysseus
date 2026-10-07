@@ -50,6 +50,8 @@ test('the first message works before the session list knows the new session', ()
   const p = makePicker({ sessionId: 's9', sessions: [], pending: 'medium' });
   assert.equal(p.get(), 'medium');
   assert.equal(p.pending(), null);
+  // Retry before session is listed preserves the transferred effort
+  assert.equal(p.get(), 'medium');
 });
 
 test('an existing chat with messages does not inherit another chat\'s unsent pick', () => {

@@ -995,7 +995,10 @@ export function updateModelPicker() {
 
 // ── Reasoning effort control for models supporting reasoning levels ──
 let _reasoningEffortBound = false;
-let _pendingReasoningEffort = null;
+export function clearPendingReasoningEffort() {
+  _pendingReasoningEffort = null;
+}
+try { window.__odysseusClearPendingReasoningEffort = clearPendingReasoningEffort; } catch (_) {}
 
 export function getSelectedReasoningEffort() {
   if (!_deps) return _pendingReasoningEffort;
@@ -1007,6 +1010,10 @@ export function getSelectedReasoningEffort() {
   if (mode.startsWith('effort:')) {
     return mode.slice('effort:'.length).trim().toLowerCase();
   }
+  const transferred = (getSelectedReasoningEffort._transferred = getSelectedReasoningEffort._transferred || new Map());
+  if (transferred.has(currentSessionId)) {
+    return transferred.get(currentSessionId);
+  }
   // A new chat's session is materialized right before its first message is
   // sent, so the pick made beforehand is still pending here. Hand it to the
   // session now (the server stores it from that message) instead of
@@ -1016,6 +1023,7 @@ export function getSelectedReasoningEffort() {
   if (_pendingReasoningEffort && !(s?.message_count > 0)) {
     const effort = _pendingReasoningEffort;
     _pendingReasoningEffort = null;
+    transferred.set(currentSessionId, effort);
     if (s) s.thinking_mode = `effort:${effort}`;
     return effort;
   }
