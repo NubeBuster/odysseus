@@ -415,3 +415,75 @@ def test_fallback_route_efforts_and_factory(monkeypatch):
     assert effort_for_route("https://fallback.example/v1", "gpt-5.5-mini", "alice") == "low"
     assert factory(0, "https://fallback.example/v1", "gpt-5.5-mini", {}) == {"kwargs": {"reasoning_effort": "low"}}
 
+
+def test_sync_openai_compatible_wire_transmits_explicit_effort(monkeypatch):
+    import httpx
+
+    sent = []
+
+    def fake_post(url, headers, **kwargs):
+        sent.append(dict(kwargs["json"]))
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+
+    monkeypatch.setattr(llm_core, "_get_cached_response", lambda *_: None)
+    monkeypatch.setattr(llm_core, "_set_cached_response", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "note_model_activity", lambda *a: None)
+    monkeypatch.setattr(llm_core, "httpx_post_kimi_aware", fake_post)
+
+    url = "https://example.test/v1"
+    messages = [{"role": "user", "content": "hi"}]
+
+    llm_core.llm_call(
+        url, "gpt-5.5", messages, max_tokens=64,
+        reasoning_effort="HIGH",
+    )
+    llm_core.llm_call(url, "gpt-5.5", messages, max_tokens=64)
+
+    assert sent[0]["reasoning_effort"] == "high"
+    assert "reasoning_effort" not in sent[1]
+
+
+def test_async_openai_compatible_wire_transmits_explicit_effort(monkeypatch):
+    import asyncio
+    import httpx
+    from contextlib import asynccontextmanager
+
+    sent = []
+
+    @asynccontextmanager
+    async def fake_slot(*args, **kwargs):
+        yield
+
+    async def fake_post(client, url, headers, **kwargs):
+        sent.append(dict(kwargs["json"]))
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+
+    monkeypatch.setattr(llm_core, "_get_cached_response", lambda *_: None)
+    monkeypatch.setattr(llm_core, "_set_cached_response", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "_get_http_client", lambda: object())
+    monkeypatch.setattr(llm_core, "_is_host_dead", lambda *_: False)
+    monkeypatch.setattr(llm_core, "_local_model_slot", fake_slot)
+    monkeypatch.setattr(llm_core, "note_model_activity", lambda *a: None)
+    monkeypatch.setattr(llm_core, "httpx_post_kimi_aware_async", fake_post)
+
+    async def exercise():
+        url = "https://example.test/v1"
+        messages = [{"role": "user", "content": "hi"}]
+
+        await llm_core.llm_call_async(
+            url, "gpt-5.5", messages, max_tokens=0,
+            max_retries=1, reasoning_effort="medium",
+        )
+        await llm_core.llm_call_async(
+            url, "gpt-5.5", messages, max_tokens=0,
+            max_retries=1,
+        )
+
+    asyncio.run(exercise())
+
+    assert sent[0]["reasoning_effort"] == "medium"
+    assert "reasoning_effort" not in sent[1]

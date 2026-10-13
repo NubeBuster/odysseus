@@ -2268,6 +2268,20 @@ def normalize_model_id(
             return a
     return None
 
+
+def _apply_explicit_nonstream_reasoning_effort(
+    payload: Dict, reasoning_effort: Optional[str]
+) -> None:
+    """Apply explicit effort to an OpenAI-compatible non-streaming request.
+
+    No explicit effort preserves existing provider-specific defaults.
+    Native Ollama, Anthropic and ChatGPT Responses use separate builders.
+    """
+    effort = str(reasoning_effort or "").strip().lower()
+    if effort and effort != "default":
+        payload["reasoning_effort"] = effort
+
+
 def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
              timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None,
@@ -2344,6 +2358,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         )
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
+        _apply_explicit_nonstream_reasoning_effort(payload, reasoning_effort)
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2757,6 +2772,7 @@ async def llm_call_async(
         _apply_deepseek_v4_reasoning_defaults(
             payload, target_url, model, thinking_mode
         )
+        _apply_explicit_nonstream_reasoning_effort(payload, reasoning_effort)
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
